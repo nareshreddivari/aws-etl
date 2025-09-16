@@ -16,10 +16,14 @@ on:
         - deploy
         - destroy
         - plan-only
+      s3_bucket_name:
+        description: 'S3 bucket name'
+        required: true
+        type: string
 
 env:
   TF_VERSION: '1.5.0'
-  AWS_REGION: 'ap-south-1'
+  AWS_REGION: 'us-east-1'
 
 jobs:
   prepare:
@@ -96,7 +100,7 @@ jobs:
       - name: Terraform Plan
         run: |
           echo "Planning Terraform deployment..."
-          terraform plan -detailed-exitcode -out=tfplan
+          terraform plan -detailed-exitcode -out=tfplan -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name || 'default-etl-bucket' }}"
         continue-on-error: true
 
       - name: Security Scan - Checkov
@@ -198,7 +202,7 @@ jobs:
       - name: Terraform Destroy
         run: |
           echo "Destroying all Terraform-managed resources..."
-          terraform destroy -auto-approve
+          terraform destroy -auto-approve -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name || 'default-etl-bucket' }}"
 
       - name: Cleanup artifacts
         run: |
