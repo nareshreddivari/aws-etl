@@ -2,9 +2,9 @@ name: AWS ETL POC - Deploy & Destroy
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ none ]
   pull_request:
-    branches: [ main ]
+    branches: [ none ]
   workflow_dispatch:
     inputs:
       action:
@@ -23,7 +23,7 @@ on:
 
 env:
   TF_VERSION: '1.5.0'
-  AWS_REGION: 'us-east-1'
+  AWS_REGION: 'ap-south-1'
 
 jobs:
   prepare:
