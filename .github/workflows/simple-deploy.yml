@@ -29,7 +29,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ap-south-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -76,7 +76,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ap-south-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -102,6 +102,7 @@ jobs:
           echo "Cleaning up any orphaned resources..."
           aws s3 rm s3://${{ github.event.inputs.s3_bucket_name }} --recursive || true
           aws s3 rb s3://${{ github.event.inputs.s3_bucket_name }} || true
+          aws lambda delete-function --function-name etl-lambda-etl-transform-fn || true
           aws iam detach-role-policy --role-name etl-glue-job-exec-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole || true
           aws iam delete-role --role-name etl-glue-job-exec-role || true
           aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess || true
