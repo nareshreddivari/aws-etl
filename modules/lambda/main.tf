@@ -26,11 +26,12 @@ resource "aws_iam_policy_attachment" "lambda_logs" {
 }
 
 resource "aws_lambda_function" "etl_transform" {
-  function_name = "${var.name_prefix}-etl-transform-fn"
-  runtime       = "python3.9"
-  handler       = "lambda_function.lambda_handler"
-  role          = aws_iam_role.lambda_exec.arn
-  filename      = "${path.module}/lambda.zip"
+  function_name    = "${var.name_prefix}-etl-transform-fn"
+  runtime          = "python3.9"
+  handler          = "handler.lambda_handler"
+  role             = aws_iam_role.lambda_exec.arn
+  filename         = "lambda/lambda_function.zip"
+  source_code_hash = filebase64sha256("lambda/lambda_function.zip")
 
   environment {
     variables = {
