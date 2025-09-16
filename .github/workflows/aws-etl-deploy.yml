@@ -54,6 +54,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      security-events: write
     
     steps:
       - name: Checkout code
@@ -122,14 +123,14 @@ jobs:
         continue-on-error: true
 
       - name: Upload Checkov results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: checkov-results.sarif
         continue-on-error: true
 
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-results.sarif
