@@ -1,4 +1,4 @@
-name: Simple Deploy (PowerShell Equivalent)
+name: Simple Deploy
 
 on:
   workflow_dispatch:
@@ -11,6 +11,10 @@ on:
         options:
         - deploy
         - destroy
+      s3_bucket_name:
+        description: 'S3 bucket name'
+        required: true
+        type: string
 
 jobs:
   deploy:
@@ -25,7 +29,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: us-east-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -51,12 +55,12 @@ jobs:
       - name: Step 4 - Plan Terraform
         run: |
           echo "Planning Terraform deployment..."
-          terraform plan
+          terraform plan -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name }}"
 
       - name: Step 5 - Apply Terraform
         run: |
           echo "Applying Terraform deployment..."
-          terraform apply -auto-approve
+          terraform apply -auto-approve -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name }}"
           echo "✅ Deployment complete!"
 
   destroy:
@@ -72,7 +76,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: us-east-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -90,5 +94,5 @@ jobs:
       - name: Step 3 - Destroy Infrastructure
         run: |
           echo "Destroying all Terraform-managed resources..."
-          terraform destroy -auto-approve
+          terraform destroy -auto-approve -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name }}"
           echo "✅ All resources destroyed!"
