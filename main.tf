@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "aws" {
-  region     = "ap-south-1" # or your preferred AWS region
+  region = "ap-south-1" # or your preferred AWS region
 }
 
 module "glue" {
@@ -22,8 +22,8 @@ module "eventbridge" {
 }
 
 module "s3" {
-  source          = "./modules/s3"
-  s3_bucket_name  = var.s3_bucket_name
+  source         = "./modules/s3"
+  s3_bucket_name = var.s3_bucket_name
 }
 
 module "lambda" {
@@ -33,6 +33,3 @@ module "lambda" {
   bucket_name = module.s3.bucket_name
   bucket_arn  = module.s3.bucket_arn
 }
-
-
-
