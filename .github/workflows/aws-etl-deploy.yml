@@ -211,6 +211,7 @@ jobs:
           BUCKET_NAME="${{ github.event.inputs.s3_bucket_name || 'default-etl-bucket' }}"
           aws s3 rm s3://$BUCKET_NAME --recursive || true
           aws s3 rb s3://$BUCKET_NAME || true
+          aws lambda delete-function --function-name etl-lambda-etl-transform-fn || true
           aws iam detach-role-policy --role-name etl-glue-job-exec-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole || true
           aws iam delete-role --role-name etl-glue-job-exec-role || true
           aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess || true
