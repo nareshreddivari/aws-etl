@@ -1,4 +1,4 @@
-name: Simple Deploy
+name: Simple Deploy (PowerShell Equivalent)
 
 on:
   workflow_dispatch:
@@ -96,3 +96,15 @@ jobs:
           echo "Destroying all Terraform-managed resources..."
           terraform destroy -auto-approve -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name }}"
           echo "✅ All resources destroyed!"
+
+      - name: Force cleanup orphaned resources
+        run: |
+          echo "Cleaning up any orphaned resources..."
+          aws s3 rm s3://${{ github.event.inputs.s3_bucket_name }} --recursive || true
+          aws s3 rb s3://${{ github.event.inputs.s3_bucket_name }} || true
+          aws iam detach-role-policy --role-name etl-glue-job-exec-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole || true
+          aws iam delete-role --role-name etl-glue-job-exec-role || true
+          aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess || true
+          aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess || true
+          aws iam delete-role --role-name etl-lambda-lambda-exec-role || true
+          echo "✅ Cleanup completed!"
