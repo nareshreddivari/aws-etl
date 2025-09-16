@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"eventbridge","Source":"./modules/eventbridge","Dir":"modules/eventbridge"},{"Key":"glue","Source":"./modules/glue","Dir":"modules/glue"},{"Key":"lambda","Source":"./modules/lambda","Dir":"modules/lambda"},{"Key":"s3","Source":"./modules/s3","Dir":"modules/s3"}]}

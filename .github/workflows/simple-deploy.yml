@@ -1,0 +1,94 @@
+name: Simple Deploy (PowerShell Equivalent)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Choose action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+        - deploy
+        - destroy
+
+jobs:
+  deploy:
+    if: github.event.inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Step 1 - Zip Lambda function
+        run: |
+          echo "Zipping Lambda function..."
+          cd lambda
+          zip -r lambda_function.zip handler.py
+          echo "✅ Lambda zipped"
+          cd ..
+
+      - name: Step 2 - Initialize Terraform
+        run: |
+          echo "Initializing Terraform..."
+          terraform init -upgrade
+
+      - name: Step 3 - Validate Terraform
+        run: |
+          echo "Validating Terraform..."
+          terraform validate
+
+      - name: Step 4 - Plan Terraform
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan
+
+      - name: Step 5 - Apply Terraform
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve
+          echo "✅ Deployment complete!"
+
+  destroy:
+    if: github.event.inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Step 1 - Initialize Terraform
+        run: |
+          echo "Initializing Terraform..."
+          terraform init -upgrade
+
+      - name: Step 2 - Validate Terraform
+        run: |
+          echo "Validating Terraform..."
+          terraform validate
+
+      - name: Step 3 - Destroy Infrastructure
+        run: |
+          echo "Destroying all Terraform-managed resources..."
+          terraform destroy -auto-approve
+          echo "✅ All resources destroyed!"

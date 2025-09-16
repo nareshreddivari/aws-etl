@@ -1,0 +1,206 @@
+name: AWS ETL POC - Deploy & Destroy
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+        - deploy
+        - destroy
+        - plan-only
+
+env:
+  TF_VERSION: '1.5.0'
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+      should-destroy: ${{ steps.check.outputs.should-destroy }}
+    steps:
+      - name: Determine action
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ACTION="${{ github.event.inputs.action }}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            ACTION="deploy"
+          else
+            ACTION="plan-only"
+          fi
+          
+          echo "Action: $ACTION"
+          echo "should-deploy=$([[ $ACTION == "deploy" ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "should-destroy=$([[ $ACTION == "destroy" ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: prepare
+    if: needs.prepare.outputs.should-deploy == 'true' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Prepare Lambda function
+        run: |
+          echo "Creating Lambda deployment package..."
+          cd lambda
+          zip -r lambda_function.zip handler.py
+          ls -la lambda_function.zip
+          cd ..
+
+      - name: Terraform Init
+        run: |
+          echo "Initializing Terraform..."
+          terraform init -upgrade
+
+      - name: Terraform Validate
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Plan
+        run: |
+          echo "Planning Terraform deployment..."
+          terraform plan -detailed-exitcode -out=tfplan
+        continue-on-error: true
+
+      - name: Security Scan - Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+        continue-on-error: true
+
+      - name: Security Scan - Trivy
+        uses: aquasecurity/trivy-action@0.12.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+        continue-on-error: true
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true
+
+      - name: Terraform Apply
+        if: needs.prepare.outputs.should-deploy == 'true' && github.event_name != 'pull_request'
+        run: |
+          echo "Applying Terraform deployment..."
+          terraform apply -auto-approve tfplan
+
+      - name: Upload Terraform State
+        if: needs.prepare.outputs.should-deploy == 'true' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-state
+          path: |
+            terraform.tfstate
+            terraform.tfstate.backup
+          retention-days: 30
+
+      - name: Output deployment info
+        if: needs.prepare.outputs.should-deploy == 'true' && github.event_name != 'pull_request'
+        run: |
+          echo "✅ Deployment completed successfully!"
+          terraform output
+
+  destroy:
+    needs: prepare
+    if: needs.prepare.outputs.should-destroy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: 
+      name: production
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Download Terraform State
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-state
+        continue-on-error: true
+
+      - name: Terraform Init
+        run: |
+          echo "Initializing Terraform..."
+          terraform init -upgrade
+
+      - name: Terraform Validate
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Terraform Destroy
+        run: |
+          echo "Destroying all Terraform-managed resources..."
+          terraform destroy -auto-approve
+
+      - name: Cleanup artifacts
+        run: |
+          echo "✅ All resources destroyed successfully!"
+          rm -f terraform.tfstate*
