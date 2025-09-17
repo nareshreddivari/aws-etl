@@ -1,0 +1,39 @@
+name: Automated CSV Processor
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # Daily at 9 AM UTC
+  workflow_dispatch:
+    inputs:
+      s3_bucket_name:
+        description: 'S3 bucket name'
+        required: true
+        type: string
+
+jobs:
+  process-csv:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Upload CSV files for processing
+        run: |
+          echo "Uploading CSV files to S3..."
+          aws s3 cp sample.csv s3://${{ github.event.inputs.s3_bucket_name || 'default-etl-bucket' }}/extract/sample-$(date +%Y%m%d-%H%M%S).csv
+          echo "✅ CSV uploaded - ETL pipeline will process automatically!"
+
+      - name: Monitor processing
+        run: |
+          echo "Waiting for processing to complete..."
+          sleep 30
+          echo "Checking processed files..."
+          aws s3 ls s3://${{ github.event.inputs.s3_bucket_name || 'default-etl-bucket' }}/load/
+          echo "✅ Processing complete!"

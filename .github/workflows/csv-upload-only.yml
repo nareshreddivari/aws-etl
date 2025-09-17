@@ -1,0 +1,36 @@
+name: CSV Upload Only (Option 2)
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'  # 9 AM weekdays
+  workflow_dispatch:
+    inputs:
+      s3_bucket_name:
+        description: 'Existing S3 bucket name'
+        required: true
+        type: string
+      csv_file:
+        description: 'CSV file to upload'
+        required: false
+        default: 'sample.csv'
+        type: string
+
+jobs:
+  upload-csv:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Upload CSV to existing bucket
+        run: |
+          echo "Uploading ${{ github.event.inputs.csv_file || 'sample.csv' }} to existing bucket..."
+          aws s3 cp ${{ github.event.inputs.csv_file || 'sample.csv' }} s3://${{ github.event.inputs.s3_bucket_name || secrets.DEFAULT_BUCKET_NAME }}/extract/
+          echo "✅ CSV uploaded - ETL pipeline triggered!"
