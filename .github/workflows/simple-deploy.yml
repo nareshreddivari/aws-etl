@@ -34,7 +34,20 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Step 1 - Zip Lambda function
+      - name: Step 1 - Pre-deployment cleanup
+        run: |
+          echo "Cleaning up any existing resources..."
+          aws s3 rm s3://${{ github.event.inputs.s3_bucket_name }} --recursive || true
+          aws s3 rb s3://${{ github.event.inputs.s3_bucket_name }} || true
+          aws lambda delete-function --function-name etl-lambda-etl-transform-fn || true
+          aws iam detach-role-policy --role-name etl-glue-job-exec-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole || true
+          aws iam delete-role --role-name etl-glue-job-exec-role || true
+          aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess || true
+          aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess || true
+          aws iam delete-role --role-name etl-lambda-lambda-exec-role || true
+          echo "✅ Pre-cleanup completed!"
+
+      - name: Step 2 - Zip Lambda function
         run: |
           echo "Zipping Lambda function..."
           cd lambda
@@ -42,22 +55,22 @@ jobs:
           echo "✅ Lambda zipped"
           cd ..
 
-      - name: Step 2 - Initialize Terraform
+      - name: Step 3 - Initialize Terraform
         run: |
           echo "Initializing Terraform..."
           terraform init -upgrade
 
-      - name: Step 3 - Validate Terraform
+      - name: Step 4 - Validate Terraform
         run: |
           echo "Validating Terraform..."
           terraform validate
 
-      - name: Step 4 - Plan Terraform
+      - name: Step 5 - Plan Terraform
         run: |
           echo "Planning Terraform deployment..."
           terraform plan -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name }}"
 
-      - name: Step 5 - Apply Terraform
+      - name: Step 6 - Apply Terraform
         run: |
           echo "Applying Terraform deployment..."
           terraform apply -auto-approve -var="s3_bucket_name=${{ github.event.inputs.s3_bucket_name }}"
