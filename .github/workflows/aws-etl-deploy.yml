@@ -2,9 +2,9 @@ name: AWS ETL POC - Deploy & Destroy
 
 on:
   push:
-    branches: [ none ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ none ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       action:
@@ -76,6 +76,20 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
+      - name: Pre-deployment cleanup
+        run: |
+          echo "Cleaning up any existing resources..."
+          BUCKET_NAME="${{ github.event.inputs.s3_bucket_name || 'default-etl-bucket' }}"
+          aws s3 rm s3://$BUCKET_NAME --recursive || true
+          aws s3 rb s3://$BUCKET_NAME || true
+          aws lambda delete-function --function-name etl-lambda-etl-transform-fn || true
+          aws iam detach-role-policy --role-name etl-glue-job-exec-role --policy-arn arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole || true
+          aws iam delete-role --role-name etl-glue-job-exec-role || true
+          aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess || true
+          aws iam detach-role-policy --role-name etl-lambda-lambda-exec-role --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess || true
+          aws iam delete-role --role-name etl-lambda-lambda-exec-role || true
+          echo "✅ Pre-cleanup completed!"
 
       - name: Prepare Lambda function
         run: |
