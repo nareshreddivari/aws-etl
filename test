@@ -1,0 +1,1165 @@
+# WSL2 Python Development Setup for Databricks on AWS
+## Amerisure Corporate Environment Setup Guide
+
+Complete setup guide for configuring WSL2 Ubuntu for Python development with Databricks on AWS, designed for Amerisure's corporate environment with Cisco Umbrella SSL inspection.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [What Gets Configured](#what-gets-configured)
+- [Detailed Setup Steps](#detailed-setup-steps)
+- [Manual Setup Guide](#manual-setup-guide)
+- [Troubleshooting](#troubleshooting)
+
+## Overview
+
+This setup configures a complete Python development environment in WSL2 with:
+
+- **UV-based Python workflow** - Modern, fast Python package manager (10-100x faster than pip)
+- **Databricks CLI** - With OAuth authentication (no tokens needed)
+- **AWS CLI v2** - With SSO configuration for multiple AWS accounts
+- **Git** - With browser-based SSO for Azure DevOps and GitHub
+- **Corporate SSL certificates** - Auto-configured for Cisco Umbrella proxy
+- **VS Code integration** - Seamless WSL2 development experience
+- **AI coding tools** - Claude Code, GitHub Copilot, etc.
+
+## Prerequisites
+
+### Required (Install from Company Portal)
+
+1. **WSL** - Windows Subsystem for Linux
+2. **Ubuntu** - Ubuntu distribution for WSL (DO NOT run initial setup yet)
+3. **Windows Terminal** - Modern terminal application (recommended for better WSL experience)
+4. **VS Code** - Visual Studio Code
+5. **Git for Windows** - Git version control
+6. **AWS CLI** - AWS Command Line Interface
+7. **Node.js/npm** - Node.js runtime
+8. **Docker Desktop** - Container platform
+
+### Required (Install from winget)
+
+After Company Portal installations, run PowerShell (non-admin) and execute:
+
+```powershell
+# Install UV (Python package manager)
+winget install astral-sh.uv
+
+# Install Databricks CLI
+winget install Databricks.DatabricksCLI
+
+# Install Python 3.13
+winget install Python.Python.3.13
+```
+
+### System Requirements
+
+- Windows 10 version 2004+ (Build 19041+) or Windows 11
+- At least 8GB RAM recommended
+- 20GB free disk space
+
+## Quick Start
+
+### Option 1: Automated Setup (Recommended)
+
+```powershell
+# 1. Clone or download this repository
+cd C:\Users\$env:USERNAME\
+git clone <repo-url> wsl2-setup
+# OR download and extract the wsl2-setup folder
+
+# 2. Run the setup script
+cd wsl2-setup
+.\setup-wsl2.ps1
+```
+
+The script will generate two files in the repository directory:
+- `setup-diagnostic.log` - Complete diagnostic log for troubleshooting
+- `environment-config-report.md` - Configuration summary and quick reference guide
+
+The script will also:
+- Extract Cisco Umbrella certificate from Windows certificate store
+- Configure Windows environment (UV, npm, pip, AWS, etc.)
+- Initialize Ubuntu WSL2
+- Install and configure all tools in WSL2
+- Set up VS Code extensions
+- Copy configurations to WSL2
+
+### Option 2: Manual Setup
+
+Follow the [Detailed Setup Steps](#detailed-setup-steps) below.
+
+## What Gets Configured
+
+### Windows Environment
+
+✅ **Cisco Umbrella Root CA Certificate**
+- Extracted from Windows certificate store
+- Saved to `%USERPROFILE%\Documents\cisco-umbrella-root.crt`
+- Used by Node.js, Python, and other tools
+
+✅ **Environment Variables**
+- `UV_NATIVE_TLS=true` - UV uses Windows certificate store
+- `NODE_EXTRA_CA_CERTS=%USERPROFILE%\Documents\cisco-umbrella-root.crt` - Node.js trusts corporate cert
+- `SSL_CERT_FILE=%USERPROFILE%\Documents\cisco-umbrella-root.crt` - Python/curl trust corporate cert
+
+✅ **pip Configuration** (`%APPDATA%\pip\pip.ini`)
+```ini
+[global]
+use-feature = truststore
+cert = %USERPROFILE%\Documents\cisco-umbrella-root.crt
+```
+
+✅ **npm Configuration**
+```bash
+npm config set cafile "%USERPROFILE%\Documents\cisco-umbrella-root.crt"
+```
+
+✅ **AWS CLI Configuration** (`%USERPROFILE%\.aws\config`)
+- Multiple SSO profiles for different AWS accounts
+- Default region: us-east-2
+- SSO start URL: https://amic.awsapps.com/start
+
+✅ **Git Configuration**
+- User name and email (from existing config or prompted)
+- Credential manager for browser-based SSO
+- Line ending handling (Windows CRLF, Linux LF)
+
+✅ **Databricks Configuration** (`%USERPROFILE%\.databrickscfg`)
+- Workspace profiles with OAuth authentication
+- Old EWS: https://dbc-bb0e2138-d3fb.cloud.databricks.com/
+- New EWS: https://amic-enterprise-workspace.cloud.databricks.com/
+
+### WSL2 Ubuntu Environment
+
+✅ **System Packages**
+- build-essential, git, curl, wget, ca-certificates
+- ripgrep, fd-find, bat (modern CLI tools)
+
+✅ **Cisco Certificate**
+- Installed to `/usr/local/share/ca-certificates/`
+- System CA bundle updated
+
+✅ **Python & UV**
+- Python 3.11 and 3.12 (via UV)
+- UV configured with native TLS
+- Virtual environment best practices
+
+✅ **AWS CLI v2**
+- Installed in WSL2
+- Configuration synced from Windows
+
+✅ **Databricks CLI**
+- Installed in WSL2
+- OAuth authentication configured
+
+✅ **Git**
+- User configuration synced from Windows
+- Git Credential Manager integration
+- Browser-based SSO for Azure DevOps and GitHub
+
+✅ **Environment Variables** (`~/.bashrc`)
+```bash
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export UV_NATIVE_TLS=true
+export AWS_DEFAULT_REGION=us-east-2
+export PIP_REQUIRE_VIRTUALENV=true
+```
+
+## Detailed Setup Steps
+
+### Step 1: Extract Cisco Certificate (Windows)
+
+The Cisco Umbrella Root CA certificate is in your Windows certificate store and needs to be extracted for use by development tools.
+
+**Automated (Recommended):**
+```powershell
+# Run the certificate extraction script
+.\scripts\Extract-CiscoCertificate.ps1
+```
+
+**Manual:**
+```powershell
+# Export certificate from Windows certificate store
+$cert = Get-ChildItem Cert:\CurrentUser\Root | Where-Object { $_.Subject -match "Cisco Umbrella Root CA" }
+$certPath = "$env:USERPROFILE\Documents\cisco-umbrella-root.crt"
+$bytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+[System.IO.File]::WriteAllBytes($certPath, $bytes)
+
+Write-Host "Certificate exported to: $certPath"
+```
+
+Certificate details:
+- **Subject**: CN=Cisco Umbrella Root CA, O=Cisco
+- **Issuer**: CN=Cisco Umbrella Root CA, O=Cisco
+- **Valid**: 6/28/2016 - 6/28/2036
+- **Thumbprint**: c5091132e9adf8ad3e33932ae60a5c8fa939e824
+
+### Step 2: Configure Windows Environment
+
+**Set Environment Variables:**
+
+```powershell
+# Set user environment variables (no admin needed)
+[System.Environment]::SetEnvironmentVariable("UV_NATIVE_TLS", "true", "User")
+[System.Environment]::SetEnvironmentVariable("NODE_EXTRA_CA_CERTS", "$env:USERPROFILE\Documents\cisco-umbrella-root.crt", "User")
+[System.Environment]::SetEnvironmentVariable("SSL_CERT_FILE", "$env:USERPROFILE\Documents\cisco-umbrella-root.crt", "User")
+
+# Reload environment
+$env:UV_NATIVE_TLS = "true"
+$env:NODE_EXTRA_CA_CERTS = "$env:USERPROFILE\Documents\cisco-umbrella-root.crt"
+$env:SSL_CERT_FILE = "$env:USERPROFILE\Documents\cisco-umbrella-root.crt"
+```
+
+**Configure pip:**
+
+```powershell
+# Create pip config directory
+$pipDir = "$env:APPDATA\pip"
+New-Item -ItemType Directory -Path $pipDir -Force
+
+# Create pip.ini
+$pipConfig = @"
+[global]
+use-feature = truststore
+cert = $env:USERPROFILE\Documents\cisco-umbrella-root.crt
+"@
+
+$pipConfig | Out-File -FilePath "$pipDir\pip.ini" -Encoding ASCII
+```
+
+**Configure npm:**
+
+```powershell
+npm config set cafile "$env:USERPROFILE\Documents\cisco-umbrella-root.crt"
+npm config set strict-ssl true
+```
+
+**Configure Git (if not already done):**
+
+```powershell
+# Set your name and email
+git config --global user.name "Last, First"
+git config --global user.email "youruser+amic@amerisure.com"
+
+# Configure credential manager (for Azure DevOps and GitHub SSO)
+git config --global credential.helper manager
+
+# Line ending configuration
+git config --global core.autocrlf true
+```
+
+### Step 3: Configure AWS CLI
+
+**Create AWS config file** (`%USERPROFILE%\.aws\config`):
+
+```ini
+[default]
+region = us-east-2
+output = text
+cli_auto_prompt = on-partial
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+s3 =
+  max_concurrent_requests = 100
+  max_queue_size = 10000
+
+[profile Sandbox]
+sso_account_id = 125067017412
+sso_role_name = PowerUserAccess
+sso_region = us-east-2
+sso_start_url = https://amic.awsapps.com/start
+region = us-east-2
+
+[profile amic-lakehouse-dev-services]
+sso_account_id = 351473049281
+sso_role_name = ITAnalyticsUser
+sso_region = us-east-2
+sso_start_url = https://amic.awsapps.com/start
+region = us-east-2
+
+[profile amic-lakehouse-access-dev]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 492858091341
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-access-prod]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 054711167660
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-exchange-dev]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 004974028243
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-exchange-prod]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 657566561116
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-processing-dev]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 148725015296
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-processing-prod]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 173621177739
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-raw-dev]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 611536618377
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile amic-lakehouse-raw-prod]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 463068056868
+sso_role_name = Data-Engineer
+region = us-east-2
+output = json
+
+[profile itanalytics]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 838287077947
+sso_role_name = Data-Lake-Administrator
+region = us-east-2
+output = json
+
+[profile itanalyticspower]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 838287077947
+sso_role_name = PowerUserAccess
+region = us-east-2
+output = json
+
+[profile amic-integration-platform-dev]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 853670689364
+sso_role_name = AWSReadOnlyAccess
+region = us-east-2
+output = json
+
+[profile amic-integration-platform-prod]
+sso_start_url = https://amic.awsapps.com/start
+sso_region = us-east-2
+sso_account_id = 369150893160
+sso_role_name = AWSReadOnlyAccess
+region = us-east-2
+output = json
+
+[profile tf-backend]
+sso_start_url = https://amic.awsapps.com/start
+sso_account_id = 883775663220
+sso_region = us-east-2
+sso_role_name = tf-backend-access
+region = us-east-2
+output = json
+```
+
+### Step 4: Configure Databricks CLI
+
+**Create Databricks config** (`%USERPROFILE%\.databrickscfg`):
+
+```ini
+[DEFAULT]
+host = https://amic-enterprise-workspace.cloud.databricks.com/
+auth_type = databricks-cli
+
+[oldEWS]
+host = https://dbc-bb0e2138-d3fb.cloud.databricks.com/
+auth_type = databricks-cli
+
+[newEWS]
+host = https://amic-enterprise-workspace.cloud.databricks.com/
+auth_type = databricks-cli
+```
+
+Note: `auth_type = databricks-cli` enables OAuth authentication (browser-based, no tokens needed).
+
+### Step 5: Initialize Ubuntu WSL2
+
+**First-time Ubuntu setup:**
+
+```powershell
+# Launch Ubuntu to create your user account
+wsl -d Ubuntu
+
+# You'll be prompted to create a username and password
+# Recommended: Use your Windows username (lowercase) for consistency
+# Example: a002282
+```
+
+**Set Ubuntu as default:**
+
+```powershell
+wsl --set-default Ubuntu
+```
+
+### Step 6: Copy Configurations to WSL2
+
+```powershell
+# Get your WSL username
+$wslUser = wsl whoami
+
+# Copy certificate
+wsl mkdir -p /home/$wslUser/certs
+Copy-Item "$env:USERPROFILE\Documents\cisco-umbrella-root.crt" "\\wsl$\Ubuntu\home\$wslUser\certs\cisco-umbrella-root.crt"
+
+# Copy AWS config
+wsl mkdir -p /home/$wslUser/.aws
+Copy-Item "$env:USERPROFILE\.aws\config" "\\wsl$\Ubuntu\home\$wslUser\.aws\config"
+
+# Copy Databricks config
+Copy-Item "$env:USERPROFILE\.databrickscfg" "\\wsl$\Ubuntu\home\$wslUser\.databrickscfg"
+
+# Copy setup scripts
+Copy-Item -Recurse ".\scripts" "\\wsl$\Ubuntu\home\$wslUser\wsl2-setup\"
+```
+
+### Step 7: Run WSL2 Setup
+
+```powershell
+# Run the initialization script
+wsl bash ~/wsl2-setup/init-wsl2.sh
+```
+
+This script will:
+1. Install system dependencies
+2. Configure Cisco certificate in system CA bundle
+3. Install UV and Python
+4. Install AWS CLI v2
+5. Install Databricks CLI
+6. Configure Git
+7. Set up environment variables
+
+### Step 8: Install VS Code Extensions
+
+```powershell
+# Install essential extensions
+code --install-extension ms-vscode-remote.remote-wsl
+code --install-extension ms-python.python
+code --install-extension ms-python.vscode-pylance
+code --install-extension charliermarsh.ruff
+code --install-extension databricks.databricks
+code --install-extension GitHub.copilot
+code --install-extension redhat.vscode-yaml
+code --install-extension ms-toolsai.datawrangler
+code --install-extension ms-azuretools.vscode-docker
+code --install-extension hashicorp.terraform
+code --install-extension ms-toolsai.jupyter
+code --install-extension ms-vscode-remote.remote-containers
+code --install-extension ms-azuretools.vscode-containers
+code --install-extension GitHub.vscode-pull-request-github
+```
+
+### Step 9: Verify Setup
+
+**Test AWS CLI:**
+```bash
+wsl
+aws sso login --profile Sandbox
+aws sts get-caller-identity --profile Sandbox
+```
+
+**Test Databricks CLI:**
+```bash
+databricks auth login --host https://amic-enterprise-workspace.cloud.databricks.com
+databricks workspace ls /
+```
+
+**Test Git:**
+```bash
+git clone https://dev.azure.com/yourorg/yourproject/_git/yourrepo
+# Browser will open for SSO authentication
+```
+
+**Test UV and Python:**
+```bash
+cd ~
+mkdir test-project
+cd test-project
+uv init
+uv venv
+source .venv/bin/activate
+uv add requests
+uv run python -c "import requests; print(requests.get('https://pypi.org').status_code)"
+```
+
+## UV-Based Python Workflow
+
+### Why UV?
+
+- **10-100x faster** than pip and poetry
+- **Single tool** for package management, virtual environments, and Python version management
+- **Built-in dependency resolver**
+- **Compatible** with pip requirements.txt and pyproject.toml
+- **Written in Rust** for maximum performance
+
+### Common UV Commands
+
+```bash
+# Install a specific Python version
+uv python install 3.11
+uv python install 3.12
+uv python install 3.13
+
+# Create a new project
+uv init my-project
+cd my-project
+
+# Create virtual environment
+uv venv
+
+# Activate virtual environment
+source .venv/bin/activate  # Linux/WSL
+.venv\Scripts\activate     # Windows
+
+# Add dependencies
+uv add pandas databricks-sql-connector pyspark
+
+# Add dev dependencies
+uv add --dev pytest ruff black mypy
+
+# Install all dependencies from pyproject.toml
+uv sync
+
+# Run a command in the virtual environment
+uv run python script.py
+uv run pytest
+
+# Update dependencies
+uv lock --upgrade
+
+# Install from requirements.txt (pip compatibility)
+uv pip install -r requirements.txt
+
+# Global tool installation
+uv tool install ipython
+uv tool install ruff
+```
+
+### Project Structure Example
+
+```bash
+# Create a Python project
+mkdir ~/projects/my-python-project
+cd ~/projects/my-python-project
+
+# Initialize with UV
+uv init
+uv venv
+source .venv/bin/activate
+
+# Add dependencies as needed
+uv add pandas requests
+
+# Add dev tools
+uv add --dev pytest ruff black mypy
+
+# Open in VS Code
+code .
+```
+
+### pyproject.toml Example
+
+UV creates a `pyproject.toml` file for your project:
+
+```toml
+[project]
+name = "my-python-project"
+version = "0.1.0"
+description = "Example Python project"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "databricks-sql-connector>=3.0.0",
+    "databricks-connect>=14.0.0",
+    "pyspark>=3.5.0",
+    "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "ipython>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+```
+
+## AWS CLI Usage
+
+### SSO Login
+
+```bash
+# Login once - authenticates all configured profiles
+aws sso login
+```
+
+### Using Profiles
+
+```bash
+# Use --profile flag
+aws s3 ls --profile amic-lakehouse-raw-prod
+aws sts get-caller-identity --profile itanalytics
+
+# Or set default for session
+export AWS_PROFILE=itanalytics
+aws s3 ls
+aws glue get-databases
+
+# Unset default
+unset AWS_PROFILE
+```
+
+### Common AWS Commands for Data Engineering
+
+```bash
+# S3 operations
+aws s3 ls s3://bucket-name/ --profile amic-lakehouse-raw-prod
+aws s3 cp local-file.csv s3://bucket-name/path/ --profile itanalytics
+aws s3 sync ./local-dir s3://bucket-name/remote-dir/ --profile itanalytics
+
+# Glue operations
+aws glue get-databases --profile itanalytics
+aws glue get-tables --database-name my_database --profile itanalytics
+aws glue get-table --database-name my_db --name my_table --profile itanalytics
+
+# CloudWatch Logs
+aws logs tail /aws/databricks/job-logs --follow --profile itanalytics
+```
+
+## Databricks CLI Usage
+
+### OAuth Authentication
+
+```bash
+# Authenticate to workspace (opens browser)
+databricks auth login --host https://amic-enterprise-workspace.cloud.databricks.com
+
+# Use a specific profile
+databricks auth login --host https://dbc-bb0e2138-d3fb.cloud.databricks.com --profile oldEWS
+```
+
+### Common Databricks Commands
+
+```bash
+# Workspace operations
+databricks workspace ls /
+databricks workspace ls /Users/
+databricks workspace export /path/to/notebook notebook.py
+
+# Upload notebook
+databricks workspace import notebook.py /Users/your.name@amerisure.com/notebook --language PYTHON
+
+# Cluster operations
+databricks clusters list
+databricks clusters get --cluster-id <cluster-id>
+databricks clusters start --cluster-id <cluster-id>
+
+# Jobs operations
+databricks jobs list
+databricks jobs get --job-id <job-id>
+databricks jobs run-now --job-id <job-id>
+
+# DBFS operations
+databricks fs ls dbfs:/
+databricks fs cp local-file.csv dbfs:/path/to/file.csv
+
+# Secrets
+databricks secrets list-scopes
+databricks secrets list --scope my-scope
+```
+
+### Databricks Asset Bundles
+
+Databricks Asset Bundles (DABs) are used to manage and deploy Databricks code:
+
+```bash
+# Initialize a new bundle
+databricks bundle init
+
+# Validate bundle configuration
+databricks bundle validate
+
+# Deploy to development
+databricks bundle deploy -t dev
+
+# Deploy to production
+databricks bundle deploy -t prod
+
+# Run a workflow from bundle
+databricks bundle run -t dev my_workflow
+```
+
+## Git Configuration
+
+### Browser-Based SSO
+
+Git is configured to use Git Credential Manager with browser-based authentication:
+
+**Azure DevOps:**
+```bash
+git clone https://dev.azure.com/amerisure/project/_git/repo
+# Browser opens for Microsoft SSO authentication
+```
+
+**GitHub:**
+```bash
+git clone https://github.com/amerisure/repo
+# Browser opens for GitHub SSO authentication
+```
+
+Credentials are cached securely and shared between Windows and WSL2.
+
+### Git Configuration
+
+Already configured via setup:
+
+```bash
+git config --global user.name "Last, First"
+git config --global user.email "user+amic@amerisure.com"
+git config --global credential.helper manager
+git config --global core.autocrlf input  # In WSL2
+```
+
+### Using Git in WSL2
+
+```bash
+# Clone repository
+cd ~/projects
+git clone https://dev.azure.com/amerisure/project/_git/repo
+cd repo
+
+# Make changes
+git add .
+git commit -m "Update ETL job"
+git push
+# Browser opens for authentication if needed
+```
+
+## VS Code Integration
+
+### Opening Projects in WSL2
+
+```bash
+# From WSL2 terminal
+cd ~/projects/my-project
+code .
+```
+
+When connected to WSL2, you'll see "WSL: Ubuntu" in the bottom-left corner of VS Code.
+
+### Recommended Project Settings
+
+Create `.vscode/settings.json` in your project:
+
+```json
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true,
+      "source.fixAll": true
+    }
+  },
+  "databricks.python.envFile": "${workspaceFolder}/.env",
+  "files.watcherExclude": {
+    "**/.venv/**": true
+  }
+}
+```
+
+### Recommended Workspace Extensions
+
+The setup script installs these automatically:
+
+- **WSL** - Remote WSL development
+- **Python** - Python language support
+- **Pylance** - Fast Python language server
+- **Ruff** - Fast Python linter and formatter
+- **Databricks** - Databricks workspace integration
+- **GitHub Copilot** - AI pair programming
+
+Additional recommended extensions:
+- **GitLens** - Enhanced Git integration
+- **Thunder Client** - API testing
+- **SQL Tools** - SQL query support
+- **YAML** - YAML language support
+
+## Environment Variables Reference
+
+### Windows Environment Variables
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `UV_NATIVE_TLS` | `true` | UV uses Windows certificate store |
+| `NODE_EXTRA_CA_CERTS` | `%USERPROFILE%\Documents\cisco-umbrella-root.crt` | Node.js trusts corporate cert |
+| `SSL_CERT_FILE` | `%USERPROFILE%\Documents\cisco-umbrella-root.crt` | Python/curl trust corporate cert |
+
+### WSL2 Environment Variables (`~/.bashrc`)
+
+```bash
+# SSL/TLS Configuration
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+# UV Configuration
+export UV_NATIVE_TLS=true
+
+# AWS Configuration
+export AWS_DEFAULT_REGION=us-east-2
+
+# Python Best Practices
+export PIP_REQUIRE_VIRTUALENV=true  # Prevent accidental global installs
+
+# Optional: Set default AWS profile
+# export AWS_PROFILE=itanalytics
+
+# Optional: Set default Databricks profile
+# export DATABRICKS_CONFIG_PROFILE=newEWS
+```
+
+### WSL2 npm Configuration
+
+The setup script automatically configures npm to use the system certificate bundle:
+
+```bash
+npm config set cafile /etc/ssl/certs/ca-certificates.crt
+npm config set strict-ssl true
+```
+
+To verify npm configuration:
+```bash
+npm config get cafile  # Should show: /etc/ssl/certs/ca-certificates.crt
+npm ping  # Test npm registry connection
+```
+
+## Troubleshooting
+
+### Certificate Issues
+
+**Problem**: SSL certificate verification errors
+
+```bash
+# Solution: Re-extract and install certificate
+
+# In Windows PowerShell:
+.\scripts\Extract-CiscoCertificate.ps1
+
+# In WSL2:
+sudo cp ~/certs/cisco-umbrella-root.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates
+
+# Verify
+curl -v https://pypi.org
+```
+
+**Problem**: `pip install` fails with SSL error
+
+```bash
+# Check pip configuration
+cat ~/.config/pip/pip.conf
+
+# Should contain:
+# [global]
+# cert = /etc/ssl/certs/ca-certificates.crt
+
+# Test with verbose output
+uv pip install requests -v
+```
+
+**Problem**: npm commands fail with SSL certificate errors (UNABLE_TO_GET_ISSUER_CERT_LOCALLY)
+
+```bash
+# Check npm configuration
+npm config get cafile
+
+# If it shows a Windows path (C:\Users\...), fix it:
+npm config set cafile /etc/ssl/certs/ca-certificates.crt
+npm config set strict-ssl true
+
+# Verify it's fixed
+npm config get cafile  # Should show: /etc/ssl/certs/ca-certificates.crt
+npm ping  # Test connection to npm registry
+
+# If still failing, re-run certificate setup
+cd ~/wsl2-setup
+bash scripts/setup-certificates.sh
+source ~/.bashrc
+```
+
+### AWS CLI Issues
+
+**Problem**: `aws sso login` fails
+
+```bash
+# Clear SSO cache
+rm -rf ~/.aws/sso/cache/
+
+# Re-login
+aws sso login --profile Sandbox
+
+# If browser doesn't open automatically, copy the URL shown
+```
+
+**Problem**: `aws` command not found in WSL2
+
+```bash
+# Reinstall AWS CLI
+cd /tmp
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+
+# Verify
+aws --version
+```
+
+### Databricks CLI Issues
+
+**Problem**: `databricks auth login` fails
+
+```bash
+# Check Databricks config
+cat ~/.databrickscfg
+
+# Should have:
+# [DEFAULT]
+# host = https://amic-enterprise-workspace.cloud.databricks.com/
+# auth_type = databricks-cli
+
+# Re-authenticate
+databricks auth login --host https://amic-enterprise-workspace.cloud.databricks.com
+```
+
+**Problem**: "Error: invalid host" when running databricks commands
+
+```bash
+# Specify profile explicitly
+databricks workspace ls / --profile DEFAULT
+
+# Or set environment variable
+export DATABRICKS_CONFIG_PROFILE=newEWS
+databricks workspace ls /
+```
+
+### Git Authentication Issues
+
+**Problem**: Git push/pull asks for password
+
+```bash
+# Configure credential manager
+git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"
+
+# Clear cached credentials
+git credential-manager clear
+
+# Next git operation will prompt for authentication
+```
+
+**Problem**: "fatal: could not read Username"
+
+```bash
+# Make sure you're using HTTPS URLs, not SSH
+git remote -v
+
+# If using SSH, switch to HTTPS:
+git remote set-url origin https://dev.azure.com/org/project/_git/repo
+```
+
+### UV and Python Issues
+
+**Problem**: `uv` command not found
+
+```bash
+# Install UV
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Reload shell
+source ~/.bashrc
+
+# Verify
+uv --version
+```
+
+**Problem**: UV can't find Python packages
+
+```bash
+# Check UV is using correct TLS setting
+echo $UV_NATIVE_TLS  # Should be "true"
+
+# Try with verbose output
+uv pip install requests -v
+
+# Check system certificates
+ls -la /etc/ssl/certs/ca-certificates.crt
+```
+
+### VS Code Issues
+
+**Problem**: VS Code can't connect to WSL2
+
+```bash
+# In Windows PowerShell:
+# Restart WSL
+wsl --shutdown
+wsl
+
+# Reinstall WSL extension
+code --uninstall-extension ms-vscode-remote.remote-wsl
+code --install-extension ms-vscode-remote.remote-wsl
+```
+
+**Problem**: Python extension can't find interpreter
+
+```bash
+# In VS Code, press Ctrl+Shift+P
+# Type: "Python: Select Interpreter"
+# Choose: .venv/bin/python
+
+# Or set in .vscode/settings.json:
+# "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python"
+```
+
+### Network Connectivity Issues
+
+**Problem**: No network connectivity in WSL2 (apt update fails, can't ping anything)
+
+This is common with VPN connections. The setup script automatically creates `.wslconfig` with mirrored networking mode.
+
+If you still have issues:
+
+```powershell
+# Restart WSL
+wsl --shutdown
+# Wait 8 seconds, then start again
+wsl
+
+# Test connectivity
+wsl ping -c 3 8.8.8.8
+wsl curl https://archive.ubuntu.com
+```
+
+If the `.wslconfig` is missing or you need to recreate it:
+
+```ini
+# C:\Users\%USERNAME%\.wslconfig
+[wsl2]
+networkingMode=mirrored
+dnsTunneling=true
+firewall=true
+autoProxy=true
+memory=8GB
+processors=4
+```
+
+Then restart WSL with `wsl --shutdown`.
+
+### Performance Issues
+
+**Problem**: WSL2 file access is slow
+
+```bash
+# Solution: Keep projects in WSL2 file system, not /mnt/c/
+
+# Good (fast):
+~/projects/my-project
+
+# Bad (slow):
+/mnt/c/Users/username/projects/my-project
+
+# Move project to WSL2:
+cd ~
+mkdir -p projects
+cp -r /mnt/c/Users/$(whoami)/projects/my-project ~/projects/
+cd ~/projects/my-project
+```
+
+**Problem**: WSL2 uses too much memory
+
+Create `C:\Users\%USERNAME%\.wslconfig`:
+
+```ini
+[wsl2]
+memory=8GB
+processors=4
+swap=2GB
+```
+
+Then restart WSL:
+```powershell
+wsl --shutdown
+wsl
+```
+
+## Additional Resources
+
+- **UV Documentation**: https://github.com/astral-sh/uv
+- **Databricks CLI**: https://docs.databricks.com/dev-tools/cli/
+- **AWS CLI v2**: https://docs.aws.amazon.com/cli/latest/userguide/
+- **WSL Documentation**: https://learn.microsoft.com/en-us/windows/wsl/
+- **Git Credential Manager**: https://github.com/git-ecosystem/git-credential-manager
+
+## Support
+
+For issues or questions:
+
+1. Check this README and troubleshooting section
+2. Review WSL2 logs: `wsl --status`
+3. Check certificate configuration
+4. Contact IT for corporate firewall/certificate issues
+5. Reach out to Data Engineering team for Databricks/AWS access
+
+---
+
+**Internal Use Only** - Amerisure Mutual Insurance Company
